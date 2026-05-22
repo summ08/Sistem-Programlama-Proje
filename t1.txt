@@ -1,2 +1,2 @@
-merhaba
-dunya
+birinci
+dosya

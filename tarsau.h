@@ -31,11 +31,11 @@ typedef struct {
 } Archive;
 
 // Fonksiyon prototipleri
-int create_archive(char **input_files, int file_count, const char *output_file);
-int extract_archive(const char *archive_file, const char *output_dir);
+int arsiv_olustur(char **input_files, int file_count, const char *output_file);
+int arsiv_ac(const char *archive_file, const char *output_dir);
 int txt_mi(const char *filename);
-int validate_archive(const char *filename);
+int arsiv_dogrula(const char *filename);
 void print_usage(void);
-void create_directory_recursive(const char *path);
+void dizin_olustur(const char *path);
 
 #endif // TARSAU_H

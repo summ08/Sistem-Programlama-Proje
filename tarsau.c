@@ -205,4 +205,149 @@ int arsiv_olustur(char **input_files, int file_count, const char *output_file) {
     free(organization);
     printf("Dosyalar birlestirildi.\n");
     return 0;
+}  
+int arsiv_ac(const char *arsiv_dosyasi, const char *cikti_klasoru) {
+    FILE *arsiv_giris = NULL;
+    Archive arsiv = {0};
+    char baslik_boyutu_metni[HEADER_SIZE_LENGTH + 1];
+    long arsiv_bilgi_boyutu;
+    char *arsiv_bilgileri = NULL;
+    
+    // Arşiv dosyasını doğrula
+    if (!arsiv_dogrula(arsiv_dosyasi)) {
+        print_hata(arsiv_dosyasi);
+        return 1;
+    }
+    
+    arsiv_giris = fopen(arsiv_dosyasi, "rb");
+    if (!arsiv_giris) {
+        print_hata(arsiv_dosyasi);
+        return 1;
+    }
+    
+    // 1. Header'ı oku (organizasyon boyutu)
+    if (fread(baslik_boyutu_metni, 1, HEADER_SIZE_LENGTH, arsiv_giris) != HEADER_SIZE_LENGTH) {
+        print_hata(arsiv_dosyasi);
+        fclose(arsiv_giris);
+        return 1;
+    }
+    baslik_boyutu_metni[HEADER_SIZE_LENGTH] = '\0';
+    arsiv_bilgi_boyutu = atol(baslik_boyutu_metni);
+    
+    if (arsiv_bilgi_boyutu <= 0 || arsiv_bilgi_boyutu > MAX_FILE_SIZE) {
+        print_hata(arsiv_dosyasi);
+        fclose(arsiv_giris);
+        return 1;
+    }
+    
+    // 2. Organizasyon bilgilerini oku
+    arsiv_bilgileri = malloc(arsiv_bilgi_boyutu + 1);
+    if (!arsiv_bilgileri) {
+        fprintf(stderr, "Bellek hatasi!\n");
+        fclose(arsiv_giris);
+        return 1;
+    }
+    
+    if (fread(arsiv_bilgileri, 1, arsiv_bilgi_boyutu, arsiv_giris) != (size_t)arsiv_bilgi_boyutu) {
+        print_hata(arsiv_dosyasi);
+        free(arsiv_bilgileri);
+        fclose(arsiv_giris);
+        return 1;
+    }
+    arsiv_bilgileri[arsiv_bilgi_boyutu] = '\0';
+    
+    // 3. Organizasyon bilgilerini parse et
+    char *parca = strtok(arsiv_bilgileri, "|");
+    int dosya_indeksi = 0;
+    
+    while (parca != NULL && dosya_indeksi < MAX_FILES) {
+        char dosya_adi[MAX_PATH_LENGTH];
+        unsigned int izinler;
+        long boyut;
+        
+        if (sscanf(parca, "%[^,],%o,%ld", dosya_adi, &izinler, &boyut) == 3) {
+            strncpy(arsiv.files[dosya_indeksi].name, dosya_adi, MAX_PATH_LENGTH - 1);
+            arsiv.files[dosya_indeksi].permissions = izinler;
+            arsiv.files[dosya_indeksi].size = boyut;
+            dosya_indeksi++;
+        }
+        
+        parca = strtok(NULL, "|");
+    }
+    
+    arsiv.file_count = dosya_indeksi;
+    free(arsiv_bilgileri);
+    
+    // 4. Çıktı dizinini oluştur
+    if (cikti_klasoru && strlen(cikti_klasoru) > 0) {
+        dizin_olustur(cikti_klasoru);
+    }
+    
+    // 5. Dosyaları çıkart
+    for (int i = 0; i < arsiv.file_count; i++) {
+        char cikti_yolu[MAX_PATH_LENGTH];
+        FILE *arsiv_cikti = NULL;
+        
+        // Çıktı yolunu oluştur
+        if (cikti_klasoru && strlen(cikti_klasoru) > 0) {
+            snprintf(cikti_yolu, sizeof(cikti_yolu), "%s/%s", 
+                    cikti_klasoru, arsiv.files[i].name);
+        } else {
+            snprintf(cikti_yolu, sizeof(cikti_yolu), "%s", 
+                    arsiv.files[i].name);
+        }
+        
+        // Dosyayı oluştur
+        arsiv_cikti = fopen(cikti_yolu, "wb");
+        if (!arsiv_cikti) {
+            fprintf(stderr, "Hata: '%s' dosyasi olusturulamadi!\n", cikti_yolu);
+            fclose(arsiv_giris);
+            return 1;
+        }
+        
+        // Dosya içeriğini kopyala
+        char gecici_buffer[4096];
+        size_t kalan_boyut = (size_t)arsiv.files[i].size;
+        
+        while (kalan_boyut > 0) {
+            size_t okunacak_bayt = (kalan_boyut < sizeof(gecici_buffer)) ? kalan_boyut : sizeof(gecici_buffer);
+            size_t okunan_bayt = fread(gecici_buffer, 1, okunacak_bayt, arsiv_giris);
+            
+            if (okunan_bayt == 0) {
+                print_hata(arsiv_dosyasi);
+                fclose(arsiv_giris);
+                return 1;
+            }
+            
+            fwrite(gecici_buffer, 1, okunan_bayt, arsiv_cikti);
+            kalan_boyut -= okunan_bayt;
+        }
+        
+        fclose(arsiv_cikti);
+        
+        // İzinleri ayarla
+#ifdef _WIN32
+        _chmod(cikti_yolu, arsiv.files[i].permissions);
+#else
+        chmod(cikti_yolu, arsiv.files[i].permissions);
+#endif
+    }
+    
+    fclose(arsiv_giris);
+    
+    // Sonucu yazdır
+    if (cikti_klasoru && strlen(cikti_klasoru) > 0) {
+        printf("%s dizininde ", cikti_klasoru);
+    }
+    
+    for (int i = 0; i < arsiv.file_count; i++) {
+        printf("%s", arsiv.files[i].name);
+        if (i < arsiv.file_count - 1) {
+            printf(", ");
+        }
+    }
+    printf(" dosyalar%s acildi.\n", arsiv.file_count > 1 ? "i" : "");
+    
+    return 0;
 }
+

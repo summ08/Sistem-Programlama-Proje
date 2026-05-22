@@ -33,7 +33,7 @@ typedef struct {
 // Fonksiyon prototipleri
 int create_archive(char **input_files, int file_count, const char *output_file);
 int extract_archive(const char *archive_file, const char *output_dir);
-int is_text_file(const char *filename);
+int itext_mi(const char *filename);
 int validate_archive(const char *filename);
 void print_usage(void);
 void create_directory_recursive(const char *path);

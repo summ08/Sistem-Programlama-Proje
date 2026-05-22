@@ -1,32 +1,33 @@
 #include "tarsau.h"
-#include <direct.h>
+
 #ifdef _WIN32
-
-
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
 
 static void print_hata(const char *filename) {
-   fprintf(stderr, "%s giris dosyasinin formati uyumsuzdur!\n", filename);
+    fprintf(stderr, "%s giris dosyasinin formati uyumsuzdur!\n", filename);
 }
 
 // Dosyanın metin dosyası olup olmadığını kontrol eder
 int txt_mi(const char *filename) {
-    FILE *file = fopen(filename, "rb");
-    if (!file) {
+    FILE *dosya = fopen(filename, "rb");
+    if (!dosya) {
         return 0;
     }
     
     // İlk 512 byte'ı kontrol et
-    unsigned char buffer[512];
-    size_t bytes_read = fread(buffer, 1, sizeof(buffer), file);
-    fclose(file);
+    unsigned char gecici_buffer[512];
+    size_t okunan_bayt = fread(gecici_buffer, 1, sizeof(gecici_buffer), dosya);
+    fclose(dosya);
     
     // NULL karakter veya ASCII dışı karakterler varsa metin değildir
-    for (size_t i = 0; i < bytes_read; i++) {
+    for (size_t i = 0; i < okunan_bayt; i++) {
         // ASCII yazdırılabilir karakterler, tab, newline, carriage return
-        if (buffer[i] == 0) {
+        if (gecici_buffer[i] == 0) {
             return 0;
         }
-        if (buffer[i] > 127) {
+        if (gecici_buffer[i] > 127) {
             // UTF-8 veya diğer encoding'ler olabilir, ama proje ASCII istiyor
             return 0;
         }
@@ -34,7 +35,6 @@ int txt_mi(const char *filename) {
     
     return 1;
 }
-  
 
 // Dizini özyinelemeli oluşturur
 void dizin_olustur(const char *path) {
@@ -58,154 +58,155 @@ void dizin_olustur(const char *path) {
     mkdir(tmp, 0755);
 }
 
-
+// Arşiv dosyasını doğrular
 int arsiv_dogrula(const char *filename) {
-    FILE *file = fopen(filename, "rb");
-    if (!file) {
+    FILE *dosya = fopen(filename, "rb");
+    if (!dosya) {
         return 0;
     }
     
     // .sau uzantısını kontrol et
     const char *ext = strrchr(filename, '.');
     if (!ext || strcmp(ext, ".sau") != 0) {
-        fclose(file);
+        fclose(dosya);
         return 0;
     }
     
     // İlk 10 byte'ı oku (header size)
-    char header_size_str[HEADER_SIZE_LENGTH + 1];
-    size_t read = fread(header_size_str, 1, HEADER_SIZE_LENGTH, file);
-    if (read != HEADER_SIZE_LENGTH) {
-        fclose(file);
+    char baslik_boyutu_metni[HEADER_SIZE_LENGTH + 1];
+    size_t okunma_sayisi = fread(baslik_boyutu_metni, 1, HEADER_SIZE_LENGTH, dosya);
+    if (okunma_sayisi != HEADER_SIZE_LENGTH) {
+        fclose(dosya);
         return 0;
     }
     
-    fclose(file);
+    fclose(dosya);
     return 1;
 }
+
 // Arşiv oluşturur (-b parametresi)
-int arsiv_olustur(char **input_files, int file_count, const char *output_file) {
-    Archive archive = {0};
-    FILE *out = NULL;
-    long total_data_size = 0;
+int arsiv_olustur(char **giris_dosyalar, int dosya_sayisi, const char *cikti_dosyasi) {
+    Archive arsiv = {0};
+    FILE *arsiv_cikti = NULL;
+    long toplam_veri_boyutu = 0;
     
     // Dosya sayısı kontrolü
-    if (file_count > MAX_FILES) {
+    if (dosya_sayisi > MAX_FILES) {
         fprintf(stderr, "Hata: En fazla %d dosya arsivlenebilir!\n", MAX_FILES);
         return 1;
     }
     
     // Her dosyayı kontrol et ve bilgilerini topla
-    for (int i = 0; i < file_count; i++) {
+    for (int i = 0; i < dosya_sayisi; i++) {
         struct stat st;
         
         // Dosya var mı?
-        if (stat(input_files[i], &st) != 0) {
-            fprintf(stderr, "Hata: '%s' dosyasi bulunamadi!\n", input_files[i]);
+        if (stat(giris_dosyalar[i], &st) != 0) {
+            fprintf(stderr, "Hata: '%s' dosyasi bulunamadi!\n", giris_dosyalar[i]);
             return 1;
         }
         
         // Normal dosya mı?
         if (!S_ISREG(st.st_mode)) {
-            fprintf(stderr, "Hata: '%s' normal bir dosya degil!\n", input_files[i]);
+            fprintf(stderr, "Hata: '%s' normal bir dosya degil!\n", giris_dosyalar[i]);
             return 1;
         }
         
         // Metin dosyası mı?
-        if (!txt_mi(input_files[i])) {
-            fprintf(stderr, "%s giris dosyasinin formati uyumsuzdur!\n", input_files[i]);
+        if (!txt_mi(giris_dosyalar[i])) {
+            fprintf(stderr, "%s giris dosyasinin formati uyumsuzdur!\n", giris_dosyalar[i]);
             return 1;
         }
         
         // Dosya bilgilerini kaydet
-        strncpy(archive.files[i].name, input_files[i], MAX_PATH_LENGTH - 1);
-        archive.files[i].permissions = st.st_mode;
-        archive.files[i].size = st.st_size;
+        strncpy(arsiv.files[i].name, giris_dosyalar[i], MAX_PATH_LENGTH - 1);
+        arsiv.files[i].permissions = st.st_mode;
+        arsiv.files[i].size = st.st_size;
         
-        total_data_size += st.st_size;
+        toplam_veri_boyutu += st.st_size;
     }
     
-    archive.file_count = file_count;
-    archive.total_size = total_data_size;
+    arsiv.file_count = dosya_sayisi;
+    arsiv.total_size = toplam_veri_boyutu;
     
     // Toplam boyut kontrolü
-    if (total_data_size > MAX_FILE_SIZE) {
+    if (toplam_veri_boyutu > MAX_FILE_SIZE) {
         fprintf(stderr, "Hata: Toplam dosya boyutu 200 MB'i asiyor!\n");
         return 1;
     }
     
     // Organizasyon bilgilerini hazırla
-    long org_size = 0;
-    for (int i = 0; i < archive.file_count; i++) {
+    long arsiv_bilgi_boyutu = 0;
+    for (int i = 0; i < arsiv.file_count; i++) {
         int entry_len = snprintf(NULL, 0, "|%s,%o,%ld",
-                                 archive.files[i].name,
-                                 archive.files[i].permissions & 0777,
-                                 archive.files[i].size);
+                                 arsiv.files[i].name,
+                                 arsiv.files[i].permissions & 0777,
+                                 arsiv.files[i].size);
         if (entry_len < 0) {
             fprintf(stderr, "Hata: Organizasyon bilgileri olusturulamadi!\n");
             return 1;
         }
-        org_size += entry_len;
+        arsiv_bilgi_boyutu += entry_len;
     }
 
-    if (org_size <= 0 || org_size > MAX_FILE_SIZE) {
+    if (arsiv_bilgi_boyutu <= 0 || arsiv_bilgi_boyutu > MAX_FILE_SIZE) {
         fprintf(stderr, "Hata: Organizasyon bilgileri cok buyuk!\n");
         return 1;
     }
 
-    char *organization = malloc((size_t)org_size + 1);
-    if (!organization) {
+    char *arsiv_bilgileri = malloc((size_t)arsiv_bilgi_boyutu + 1);
+    if (!arsiv_bilgileri) {
         fprintf(stderr, "Bellek hatasi!\n");
         return 1;
     }
 
-    size_t org_offset = 0;
-    for (int i = 0; i < archive.file_count; i++) {
-        org_offset += (size_t)sprintf(organization + org_offset, "|%s,%o,%ld",
-                                      archive.files[i].name,
-                                      archive.files[i].permissions & 0777,
-                                      archive.files[i].size);
+    size_t arsiv_bilgi_ofseti = 0;
+    for (int i = 0; i < arsiv.file_count; i++) {
+        arsiv_bilgi_ofseti += (size_t)sprintf(arsiv_bilgileri + arsiv_bilgi_ofseti, "|%s,%o,%ld",
+                                              arsiv.files[i].name,
+                                              arsiv.files[i].permissions & 0777,
+                                              arsiv.files[i].size);
     }
 
     // Çıktı dosyasını oluştur
-    out = fopen(output_file, "wb");
-    if (!out) {
-        fprintf(stderr, "Hata: '%s' dosyasi olusturulamadi!\n", output_file);
-        free(organization);
+    arsiv_cikti = fopen(cikti_dosyasi, "wb");
+    if (!arsiv_cikti) {
+        fprintf(stderr, "Hata: '%s' dosyasi olusturulamadi!\n", cikti_dosyasi);
+        free(arsiv_bilgileri);
         return 1;
     }
 
     // 1. Header: İlk 10 byte organizasyon boyutu
-    fprintf(out, "%010ld", org_size);
+    fprintf(arsiv_cikti, "%010ld", arsiv_bilgi_boyutu);
 
     // 2. Organizasyon bilgileri
-    fwrite(organization, 1, (size_t)org_size, out);
+    fwrite(arsiv_bilgileri, 1, (size_t)arsiv_bilgi_boyutu, arsiv_cikti);
 
     // 3. Dosya içeriklerini ekle
-    for (int i = 0; i < archive.file_count; i++) {
-        FILE *in = fopen(archive.files[i].name, "rb");
-        if (!in) {
-            fprintf(stderr, "Hata: '%s' dosyasi okunamadi!\n", archive.files[i].name);
-            fclose(out);
-            free(organization);
+    for (int i = 0; i < arsiv.file_count; i++) {
+        FILE *arsiv_giris = fopen(arsiv.files[i].name, "rb");
+        if (!arsiv_giris) {
+            fprintf(stderr, "Hata: '%s' dosyasi okunamadi!\n", arsiv.files[i].name);
+            fclose(arsiv_cikti);
+            free(arsiv_bilgileri);
             return 1;
         }
         
         // Dosya içeriğini kopyala
-        char buffer[4096];
-        size_t bytes;
-        while ((bytes = fread(buffer, 1, sizeof(buffer), in)) > 0) {
-            fwrite(buffer, 1, bytes, out);
+        char gecici_buffer[4096];
+        size_t okunan_bayt;
+        while ((okunan_bayt = fread(gecici_buffer, 1, sizeof(gecici_buffer), arsiv_giris)) > 0) {
+            fwrite(gecici_buffer, 1, okunan_bayt, arsiv_cikti);
         }
         
-        fclose(in);
+        fclose(arsiv_giris);
     }
 
-    fclose(out);
-    free(organization);
+    fclose(arsiv_cikti);
+    free(arsiv_bilgileri);
     printf("Dosyalar birlestirildi.\n");
     return 0;
-}  
+} 
 int arsiv_ac(const char *arsiv_dosyasi, const char *cikti_klasoru) {
     FILE *arsiv_giris = NULL;
     Archive arsiv = {0};

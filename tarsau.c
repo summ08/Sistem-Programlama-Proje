@@ -352,3 +352,8 @@ int arsiv_ac(const char *arsiv_dosyasi, const char *cikti_klasoru) {
     return 0;
 }
 
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "Hata: Gecersiz parametre '%s'\n", argc > 1 ? argv[1] : "");
+        return 1;
+    }

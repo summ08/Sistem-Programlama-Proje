@@ -357,3 +357,5 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Hata: Gecersiz parametre '%s'\n", argc > 1 ? argv[1] : "");
         return 1;
     }
+ // -b parametresi: Arşiv oluştur
+    if (strcmp(argv[1], "-b") == 0) {

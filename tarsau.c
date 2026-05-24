@@ -359,3 +359,25 @@ int main(int argc, char *argv[]) {
     }
  // -b parametresi: Arşiv oluştur
     if (strcmp(argv[1], "-b") == 0) {
+ char *giris_dosyalar[MAX_FILES];
+        int dosya_sayisi = 0;
+        char *cikti_dosyasi = DEFAULT_ARCHIVE;
+        
+        // Parametreleri parse et
+        for (int i = 2; i < argc; i++) {
+            if (strcmp(argv[i], "-o") == 0) {
+                if (i + 1 < argc) {
+                    cikti_dosyasi = argv[i + 1];
+                    i++;
+                } else {
+                    fprintf(stderr, "Hata: -o parametresi icin deger veriniz!\n");
+                    return 1;
+                }
+            } else {
+                if (dosya_sayisi >= MAX_FILES) {
+                    fprintf(stderr, "Hata: En fazla %d dosya arsivlenebilir!\n", MAX_FILES);
+                    return 1;
+                }
+                giris_dosyalar[dosya_sayisi++] = argv[i];
+            }
+        }

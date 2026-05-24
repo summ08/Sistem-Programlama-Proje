@@ -206,7 +206,9 @@ int arsiv_olustur(char **giris_dosyalar, int dosya_sayisi, const char *cikti_dos
     free(arsiv_bilgileri);
     printf("Dosyalar birlestirildi.\n");
     return 0;
-} 
+}
+
+// Arşivi çıkartır (-a parametresi)
 int arsiv_ac(const char *arsiv_dosyasi, const char *cikti_klasoru) {
     FILE *arsiv_giris = NULL;
     Archive arsiv = {0};
@@ -357,9 +359,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Hata: Gecersiz parametre '%s'\n", argc > 1 ? argv[1] : "");
         return 1;
     }
- // -b parametresi: Arşiv oluştur
+    
+    // -b parametresi: Arşiv oluştur
     if (strcmp(argv[1], "-b") == 0) {
- char *giris_dosyalar[MAX_FILES];
+        if (argc < 3) {
+            fprintf(stderr, "Hata: En az bir giris dosyasi gerekli!\n");
+            return 1;
+        }
+        
+        char *giris_dosyalar[MAX_FILES];
         int dosya_sayisi = 0;
         char *cikti_dosyasi = DEFAULT_ARCHIVE;
         
@@ -381,3 +389,38 @@ int main(int argc, char *argv[]) {
                 giris_dosyalar[dosya_sayisi++] = argv[i];
             }
         }
+        
+        if (dosya_sayisi == 0) {
+            fprintf(stderr, "Hata: En az bir giris dosyasi gerekli!\n");
+            return 1;
+        }
+        
+        return arsiv_olustur(giris_dosyalar, dosya_sayisi, cikti_dosyasi);
+    }
+    
+    // -a parametresi: Arşivi çıkart
+    else if (strcmp(argv[1], "-a") == 0) {
+        if (argc < 3) {
+            fprintf(stderr, "Hata: Arsiv dosyasi gerekli!\n");
+            return 1;
+        }
+        
+        if (argc > 4) {
+            fprintf(stderr, "Hata: -a parametresi en fazla 2 parametre alir!\n");
+            return 1;
+        }
+        
+        char *arsiv_dosyasi = argv[2];
+        char *cikti_klasoru = (argc == 4) ? argv[3] : NULL;
+        
+        return arsiv_ac(arsiv_dosyasi, cikti_klasoru);
+    }
+    
+    // Geçersiz parametre
+    else {
+        fprintf(stderr, "Hata: Gecersiz parametre '%s'\n", argv[1]);
+        return 1;
+    }
+    
+    return 0;
+}
